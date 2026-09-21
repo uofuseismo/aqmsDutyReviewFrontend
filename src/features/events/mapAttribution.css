@@ -1,0 +1,23 @@
+/*
+  Underlines the attribution links.
+
+  Leaflet sets `.leaflet-control-attribution a { text-decoration: none }` and
+  restores the underline only on hover and focus, which leaves colour as the
+  sole thing marking them as links at rest - the case WCAG 1.4.1 is about, and
+  a real problem for the reviewers who cannot pick #0078A8 out of #333 on a
+  phone at arm's length.
+
+  Specificity, not order, is what makes this win. Leaflet's rule is (0,1,1);
+  adding `.leaflet-container` makes this (0,2,1), so it holds regardless of
+  which stylesheet the bundler happens to emit last. That matters here because
+  leaflet.css arrives with a LAZY chunk - it is injected when the map first
+  loads, after index.css - so an equal-specificity rule in the global sheet
+  would quietly lose. The same `.leaflet-container .leaflet-control-...`
+  pattern is what Leaflet itself uses a few lines earlier.
+*/
+.leaflet-container .leaflet-control-attribution a {
+  text-decoration: underline;
+  /* The attribution sits at 11px; the default underline crowds the descenders
+     at that size. */
+  text-underline-offset: 2px;
+}
