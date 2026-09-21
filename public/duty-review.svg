@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="AQMS Duty Review">
+  <title>AQMS Duty Review</title>
+  <!--
+    A seismogram, not a monogram.
+
+    The block U was borrowed from the university and says nothing about what
+    this application is; in a tab strip beside a dozen others it is one of
+    several red-ish institutional marks. A single trace with one excursion
+    reads as "earthquake" at any size, and it is the same drawing the record
+    section makes - the app's own vocabulary rather than somebody's crest.
+
+    Utah Red keeps the institutional tie. White on it measures 5.9:1, the same
+    pairing the Sign in button already uses.
+
+    Deliberately ONE excursion, and a WIDE one. The first attempt put the up
+    and down strokes 2.5 units apart, which at 16px is a pixel and a quarter
+    between two strokes a pixel and a half wide - they merged into a white
+    blob. Five units apart keeps them readable as a spike at the only size
+    that really matters.
+  -->
+  <rect width="32" height="32" rx="7" fill="#BE0000"/>
+  <path d="M3.5 17 H10 L13.5 8.5 L18.5 24 L22 14.5 H28.5"
+        fill="none" stroke="#FFFFFF" stroke-width="2.8"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
