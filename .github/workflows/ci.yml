@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # So a run can be kicked off by hand after changing a secret or a runner
+  # image, without pushing an empty commit.
+  workflow_dispatch:
+
+# A second push to the same branch makes the first run's answer irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# This job only reads the tree. Anything that needs to write - a release, a
+# deploy - should ask for its own permission in its own job.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Lint and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # Matches the development machine. Vite 8 needs 20.19+ or 22.12+, so
+          # this is comfortably inside support; pin it rather than tracking
+          # "latest" so a new Node release cannot break main on its own.
+          node-version: '24'
+          cache: npm
+
+      # `ci`, not `install`: it installs exactly what package-lock.json pins,
+      # and fails outright if the lockfile and package.json have drifted -
+      # which is a check worth having on its own.
+      - run: npm ci
+
+      - run: npm run lint
+
+      # `npm run build` is `tsc -b && vite build`, so this is the typecheck as
+      # well as the bundle. There is no separate tsc step on purpose: two ways
+      # to typecheck is two things to keep in agreement.
+      - run: npm run build
+
+      # What is actually deployed, stamped into the payload itself.
+      #
+      # Passed through the environment rather than interpolated into the shell
+      # with ${{ }}: a ref name is attacker-controlled text in the general
+      # case, and "$REF" cannot end a quote and start a command.
+      - name: Stamp the build
+        env:
+          COMMIT: ${{ github.sha }}
+          REF: ${{ github.ref_name }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          printf '{"commit":"%s","ref":"%s","builtAt":"%s","runId":"%s"}\n' \
+            "$COMMIT" "$REF" "$(date -u +%FT%TZ)" "$RUN_ID" > dist/build-info.json
+
+      # `-C dist .` so the files land at the top of the tarball: untarring
+      # into /var/www/<somewhere> drops index.html and assets/ straight in,
+      # with no dist/ level to strip.
+      #
+      # owner/group 0 so that untarring as root gives root-owned files rather
+      # than files owned by whatever uid the runner happened to use.
+      - name: Pack the payload
+        env:
+          COMMIT: ${{ github.sha }}
+        run: |
+          short="${COMMIT:0:7}"
+          echo "PAYLOAD=duty-review-$short.tar.gz" >> "$GITHUB_ENV"
+          tar --owner=0 --group=0 --numeric-owner --sort=name \
+            -czf "duty-review-$short.tar.gz" -C dist .
+
+      # On the run page, so it can be checked against the file after scp
+      # without downloading the artifact twice.
+      - name: Checksum
+        run: |
+          sha256sum "$PAYLOAD" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # archive: false uploads the file as-is. The default would zip it, and a
+      # zip containing a tar.gz is a second thing to unwrap before the payload
+      # can go anywhere. With it off the artifact IS the tarball - and the
+      # file name becomes the artifact name, so `name:` is not set here.
+      - uses: actions/upload-artifact@v7
+        with:
+          path: ${{ env.PAYLOAD }}
+          archive: false
+          retention-days: 14
+          if-no-files-found: error
