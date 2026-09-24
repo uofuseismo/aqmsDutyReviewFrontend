@@ -11,6 +11,12 @@ export interface CatalogContextValue {
   fetchedAt: Date | null
   /** Stable identity - safe to put in a dependency array. */
   reload: () => void
+  /**
+   * Re-read without a spinner, keeping what is on screen until the answer
+   * arrives. Cheap when nothing moved: the hash matches and the list is left
+   * alone. Stable identity.
+   */
+  revalidate: () => void
 }
 
 export const CatalogContext = createContext<CatalogContextValue | null>(null)

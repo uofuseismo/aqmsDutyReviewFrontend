@@ -153,10 +153,12 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
 
   /** Stable, so a consumer can list it in a dependency array safely. */
   const reload = useCallback(() => void load(false), [load])
+  /** The poll's quiet re-read, on demand: no spinner, rows swapped in place. */
+  const revalidate = useCallback(() => void load(true), [load])
 
   const value = useMemo<CatalogContextValue>(
-    () => ({ ...state, reload }),
-    [state, reload],
+    () => ({ ...state, reload, revalidate }),
+    [state, reload, revalidate],
   )
 
   return <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>
