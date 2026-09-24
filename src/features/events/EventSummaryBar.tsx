@@ -8,7 +8,7 @@ import {
   Text,
   createListCollection,
 } from '@chakra-ui/react'
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import {
   formatDepth,
   formatLatitude,
@@ -53,6 +53,7 @@ export function EventSummaryBar({
   origins = [],
   preferredOriginId,
   onSelectOrigin,
+  notice,
 }: {
   event: CatalogEvent
   /** Every origin on the event, so one can be chosen from here. */
@@ -74,6 +75,15 @@ export function EventSummaryBar({
    * changes them belongs on the same line.
    */
   origin?: Origin
+  /**
+   * Something that must stay in view whatever the reviewer is scrolled to -
+   * rendered inside the sticky box, under the facts.
+   *
+   * The solution-changed notice lives here. Above the steps it scrolled away
+   * with the page, and the first real test of it was an analyst on Summary,
+   * pressing Accept, for whom it was easy to miss.
+   */
+  notice?: ReactNode
 }) {
   const latitude = origin?.latitude ?? event.latitude
   const longitude = origin?.longitude ?? event.longitude
@@ -207,6 +217,7 @@ export function EventSummaryBar({
             }
           />
         </HStack>
+        {notice}
       </Stack>
     </Box>
   )

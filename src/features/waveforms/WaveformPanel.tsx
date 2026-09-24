@@ -17,6 +17,8 @@ const WaveformChart = lazy(() =>
 
 export interface WaveformPanelProps {
   eventId: number
+  /** The preferred origin the picks belong to - part of the cache key. */
+  originId?: number
   /** The picks to draw. These are the origin's own arrivals. */
   arrivals: Arrival[]
   originMs?: number
@@ -29,8 +31,8 @@ export interface WaveformPanelProps {
  * and the map above still answer the question, so a failure here is a notice
  * inside this panel rather than anything that interrupts the review.
  */
-export function WaveformPanel({ eventId, arrivals, originMs }: WaveformPanelProps) {
-  const { channels, loading, error } = useWaveforms(eventId)
+export function WaveformPanel({ eventId, originId, arrivals, originMs }: WaveformPanelProps) {
+  const { channels, loading, error } = useWaveforms(eventId, originId)
   const resetRef = useRef<(() => void) | null>(null)
   const [canReset, setCanReset] = useState(false)
 

@@ -29,7 +29,7 @@ export interface RawAlarm {
  * though: a state this build has never met should surface rather than be
  * assumed harmless.
  */
-export type AlarmState = 'completed' | 'pending' | 'failed'
+export type AlarmState = 'completed' | 'pending' | 'cancelled' | 'failed'
 
 export interface Alarm extends Omit<RawAlarm, 'modificationTime'> {
   time: Date
@@ -42,7 +42,12 @@ export interface Alarm extends Omit<RawAlarm, 'modificationTime'> {
 }
 
 /**
- * An alarm has three states: COMPLETED, PROCESSING, ERROR.
+ * An alarm has four states: COMPLETED, PROCESSING, ERROR - and CANCELLED,
+ * which is what the alarms of a cancelled event become. The first real
+ * cancel (31156066) turned every row CANCELLED, and while this only knew
+ * three, each one was reported as a failure by name in the headline.
+ * Cancelled is the expected result of a decision, not something that went
+ * wrong, so it is its own outcome and stays in the table.
  *
  * FINALIZED is NOT one of them - that belongs to an event's review status,
  * and briefly appeared here by my own confusion between the two. A FINALIZED
@@ -58,6 +63,9 @@ export function classifyState(state: string): AlarmState {
   const normalised = state.trim().toLowerCase()
   if (normalised === 'completed') return 'completed'
   if (PENDING_STATES.includes(normalised)) return 'pending'
+  // Both spellings, as for the event status: which one AQMS writes has only
+  // been seen once.
+  if (normalised === 'cancelled' || normalised === 'canceled') return 'cancelled'
   return 'failed'
 }
 
@@ -82,6 +90,7 @@ export interface AlarmSummary {
   total: number
   failed: number
   pending: number
+  cancelled: number
   /** Distinct actions, so "3 mails" reads as one thing that happened. */
   distinctActions: number
   /** When the first and last action ran. */
@@ -98,6 +107,7 @@ export function summariseAlarms(alarms: Alarm[]): AlarmSummary {
     total: alarms.length,
     failed: failures.length,
     pending: alarms.filter((alarm) => alarm.pending).length,
+    cancelled: alarms.filter((alarm) => alarm.outcome === 'cancelled').length,
     distinctActions: new Set(alarms.map((alarm) => alarm.action)).size,
     firstMs: times.length > 0 ? Math.min(...times) : undefined,
     lastMs: times.length > 0 ? Math.max(...times) : undefined,
@@ -123,11 +133,12 @@ export function hasNotified(alarms: Alarm[]): boolean {
  * the table and the least informative, since it is the answer on almost every
  * row. Icon AND colour, never colour alone.
  */
-export type AlarmGlyph = 'check' | 'clock' | 'cross' | 'unknown'
+export type AlarmGlyph = 'check' | 'clock' | 'cancelled' | 'cross' | 'unknown'
 
 export function alarmGlyph(alarm: Pick<Alarm, 'state' | 'outcome'>): AlarmGlyph {
   if (alarm.outcome === 'completed') return 'check'
   if (alarm.outcome === 'pending') return 'clock'
+  if (alarm.outcome === 'cancelled') return 'cancelled'
   // A state nobody here recognises is drawn differently from a known failure:
   // "this went wrong" and "I do not know what this means" are not the same.
   return alarm.state.trim().toLowerCase() === 'error' ? 'cross' : 'unknown'

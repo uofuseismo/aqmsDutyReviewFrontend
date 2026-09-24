@@ -291,6 +291,7 @@ export function LocationStep({
           >
             <WaveformPanel
               eventId={eventId}
+              originId={selected.id}
               arrivals={selected.arrivals}
               originMs={selected.time.getTime()}
             />

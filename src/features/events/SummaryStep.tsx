@@ -24,6 +24,8 @@ import { CriteriaTable } from './CriteriaTable'
 import { allSatisfied, locationCriteria, magnitudeCriteria } from './autoAccept'
 import {
   confirmationFor,
+  expectedSolutionOf,
+  isSolutionChanged,
   submitEventAction,
   type Confirmation,
   type EventAction,
@@ -53,6 +55,7 @@ export function SummaryStep({
   origin: chosenOrigin,
   onDone,
   onRefresh,
+  changeUnreviewed = false,
 }: {
   event: CatalogEvent
   detail: EventDetail | null
@@ -62,6 +65,8 @@ export function SummaryStep({
   onDone?: () => void
   /** Called after a successful action, to re-read this event's own state. */
   onRefresh?: () => void
+  /** The event changed under this review and nobody has acknowledged it. */
+  changeUnreviewed?: boolean
 }) {
   const { can, getToken, expireSession } = useAuth()
   const [pending, setPending] = useState<EventAction | null>(null)
@@ -71,6 +76,39 @@ export function SummaryStep({
     null,
   )
   const inFlight = useRef<AbortController | null>(null)
+
+  /*
+    An outcome belongs to the solution it was reached on.
+
+    "Event cancelled" stayed on screen after the analyst re-saved the event
+    in the processing tool - a new solution, reopened, with the only way
+    forward hidden behind a result that no longer described it. So when the
+    solution changes, the old outcome goes and the buttons come back (locked
+    behind the change notice until it is acknowledged).
+
+    Adjusted during render, as the page does for the notice itself, so the
+    stale outcome never shows beside the new solution for a frame.
+  */
+  const solutionKey = `${detail?.preferredOriginId}:${detail?.preferredMagnitudeId}:${detail?.eventType}`
+  const [outcomeFor, setOutcomeFor] = useState(solutionKey)
+  if (outcomeFor !== solutionKey) {
+    setOutcomeFor(solutionKey)
+    setDone(null)
+    setConfirming(null)
+  }
+  /*
+    A refusal is answered once the change is acknowledged.
+
+    After a 409 the backend's "changed while you were reviewing it" stays up
+    beside the notice - it says nothing was done, which is worth reading. Once
+    the reviewer presses Reviewed it is history, and left there it would sit
+    over the buttons looking like the next attempt's answer.
+  */
+  const [wasLocked, setWasLocked] = useState(changeUnreviewed)
+  if (wasLocked !== changeUnreviewed) {
+    setWasLocked(changeUnreviewed)
+    if (!changeUnreviewed) setError(null)
+  }
 
   const mayAct = can('read_write')
   /*
@@ -109,7 +147,14 @@ export function SummaryStep({
     setPending(action)
     setError(null)
     try {
-      const message = await submitEventAction(action, event.id, getToken(), controller.signal)
+      if (expected === undefined) return
+      const message = await submitEventAction(
+        action,
+        event.id,
+        expected,
+        getToken(),
+        controller.signal,
+      )
       if (controller.signal.aborted) return
       /*
         Stay here and say what happened.
@@ -143,6 +188,16 @@ export function SummaryStep({
       setError(
         cause instanceof ApiError ? cause.message : `Could not ${action} this event.`,
       )
+      /*
+        The event moved on - repicked in the processing tool, most likely.
+        Nothing was done; the backend's message says so. Load what is there
+        now, so the checks on this screen describe the solution the next
+        click would act on instead of the one that was just refused.
+      */
+      if (isSolutionChanged(cause)) {
+        onDone?.()
+        onRefresh?.()
+      }
     } finally {
       if (!controller.signal.aborted) setPending(null)
     }
@@ -173,7 +228,16 @@ export function SummaryStep({
     void run(action)
   }
 
-  const reason = mayAct ? undefined : 'Your account has read-only access'
+  // What the analyst is looking at, sent with the action so the backend can
+  // refuse if the event has changed since. See expectedSolutionOf.
+  const expected = expectedSolutionOf(detail)
+  const reason = !mayAct
+    ? 'Your account has read-only access'
+    : expected === undefined
+      ? 'Waiting for the event details to load'
+      : changeUnreviewed
+        ? 'The event changed - review the new solution, then press Reviewed in the notice at the top'
+        : undefined
 
   return (
     <Stack gap="5">
@@ -274,7 +338,7 @@ export function SummaryStep({
           label="Accept"
           icon={<LuCheck />}
           colorPalette="green"
-          disabled={!mayAct}
+          disabled={reason !== undefined}
           description="Set event as reviewed and issue accept alarms."
           reason={reason}
           loading={pending === 'accept'}
@@ -286,7 +350,7 @@ export function SummaryStep({
           icon={<LuX />}
           colorPalette="utahRed"
           variant="outline"
-          disabled={!mayAct}
+          disabled={reason !== undefined}
           description="Indicate event is erroneous and issue cancel alarms."
           reason={reason}
           loading={pending === 'cancel'}

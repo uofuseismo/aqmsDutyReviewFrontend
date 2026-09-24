@@ -10,9 +10,11 @@ import { useLocks } from './useLocks'
 import { useCatalog } from './useCatalog'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { SummaryStep } from './SummaryStep'
+import { SolutionChangedNotice } from './SolutionChangedNotice'
+import { printOf, samePrint, type SolutionPrint } from './solutionPrint'
 import { useStationsAndSettings } from '../stations/useStations'
 import { reconcileGeometry } from './reconcileGeometry'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 /**
  * The review workflow: location, then magnitudes, then a summary carrying the
@@ -37,6 +39,8 @@ export function EventReviewPage() {
     loading: detailLoading,
     error: detailError,
     reload: reloadDetail,
+    revalidate: revalidateDetail,
+    settled: detailSettled,
   } = useEventDetail(Number.isFinite(Number(eventId)) ? Number(eventId) : undefined)
   const { epochs } = useStationsAndSettings()
 
@@ -55,6 +59,21 @@ export function EventReviewPage() {
     it was made on.
   */
   const [chosen, setChosen] = useState<{ eventId?: string; originId: number } | null>(null)
+  /*
+    The step is controlled so Next can stop at Summary.
+
+    Left to itself, Ark's Next is enabled on the last step and walks into a
+    "completed" pseudo-step past it - a dead-end screen with nothing on it.
+    The review ends on Summary: that is where Accept and Cancel are, and
+    where "Back to all events" appears once one of them has been used.
+
+    Keyed by event, like the origin choice, so opening another event starts
+    at Location rather than wherever the last one was left.
+  */
+  const [at, setAt] = useState<{ eventId?: string; step: number }>({ eventId, step: 0 })
+  const step = at.eventId === eventId ? at.step : 0
+  const goTo = (next: number) => setAt({ eventId, step: next })
+  const onLastStep = step >= STEPS.length - 1
 
   /*
     Fill in the source-receiver geometry the payload did not carry, from the
@@ -70,6 +89,60 @@ export function EventReviewPage() {
   const detail = useMemo(() => reconcileGeometry(rawDetail, epochs), [rawDetail, epochs])
   const id = Number(eventId)
   const event = events.find((candidate) => candidate.id === id)
+
+  /*
+    The catalog poll noticed this event move - re-check its detail.
+
+    The catalog keeps a row's object identity unless one of its fields
+    changes, so a new object for the same event means something did. This is
+    the path for an analyst whose browser stayed visible behind the
+    processing tool: focus never fires, but within one poll the repick shows
+    up here.
+  */
+  const lastRow = useRef(event)
+  useEffect(() => {
+    const previous = lastRow.current
+    lastRow.current = event
+    if (event === undefined || previous === undefined) return
+    if (previous.id !== event.id || previous === event) return
+    revalidateDetail()
+  }, [event, revalidateDetail])
+
+  /*
+    Did the event change under an open review?
+
+    Compared during render against the solution first shown for this event,
+    as React's "adjusting state when a prop changes" pattern - an effect would
+    render the new solution once WITHOUT the notice before adding it, and
+    that one frame is the thing this guards against.
+
+    On a change: announce it, and drop any hand-picked origin so the review
+    snaps to the new preferred one. The picker would otherwise hold the old
+    origin and the Summary would judge that, while Accept acts on the new.
+
+    Not until the first fetch of this visit has settled. Reopening an event
+    shows the cached copy from the earlier visit at once, and taking THAT as
+    "what they opened" raised the notice the moment the fresh copy arrived -
+    announcing a change from before they opened it, and locking Accept
+    behind it.
+  */
+  const shownPrint = detailSettled ? printOf(detail) : undefined
+  const [seen, setSeen] = useState<{ eventId?: string; print: SolutionPrint } | null>(null)
+  const [change, setChange] = useState<{
+    eventId?: string
+    from: SolutionPrint
+    to: SolutionPrint
+  } | null>(null)
+  if (shownPrint !== undefined) {
+    if (seen === null || seen.eventId !== eventId) {
+      setSeen({ eventId, print: shownPrint })
+    } else if (!samePrint(seen.print, shownPrint)) {
+      setSeen({ eventId, print: shownPrint })
+      setChange({ eventId, from: seen.print, to: shownPrint })
+      setChosen(null)
+    }
+  }
+  const visibleChange = change !== null && change.eventId === eventId ? change : null
 
   // Defaults to preferred, every time, for every event.
   const origin =
@@ -129,12 +202,26 @@ export function EventReviewPage() {
         origins={detail?.origins ?? []}
         preferredOriginId={detail?.preferredOrigin?.id}
         onSelectOrigin={(next) => setChosen({ eventId, originId: next })}
+        notice={
+          visibleChange && (
+            <SolutionChangedNotice
+              from={visibleChange.from}
+              to={visibleChange.to}
+              onAcknowledge={() => setChange(null)}
+            />
+          )
+        }
       />
       {/* Stated before the steps: whether somebody else is in here is the
           first thing that should change what you do next. */}
       {locks.get(event.id) && <LockNotice lock={locks.get(event.id)!} />}
 
-      <Steps.Root defaultStep={0} count={STEPS.length} size="sm">
+      <Steps.Root
+        step={step}
+        onStepChange={(details) => goTo(details.step)}
+        count={STEPS.length}
+        size="sm"
+      >
       {/*
         Back and Next live IN the step rail on a wide screen.
 
@@ -196,11 +283,7 @@ export function EventReviewPage() {
           ))}
         </Steps.List>
 
-        <Steps.NextTrigger asChild>
-          <Button colorPalette="utahRed" size="sm" display={{ base: 'none', md: 'inline-flex' }}>
-            Next
-          </Button>
-        </Steps.NextTrigger>
+        <NextButton disabled={onLastStep} onClick={() => goTo(step + 1)} wideOnly />
       </HStack>
 
         <Steps.Content index={0}>
@@ -239,18 +322,11 @@ export function EventReviewPage() {
                 origin={origin}
                 onDone={reload}
                 onRefresh={reloadDetail}
+                changeUnreviewed={visibleChange !== null}
               />
             </ErrorBoundary>
           </Box>
         </Steps.Content>
-        <Steps.CompletedContent>
-          <Box borderWidth="1px" rounded="lg" bg="bg.panel" p="6" minH="16rem">
-            <Text fontWeight="semibold">Review complete</Text>
-            <Text color="fg.muted" fontSize="sm">
-              Accept and cancel will post to /actions once the steps are real.
-            </Text>
-          </Box>
-        </Steps.CompletedContent>
 
         {/* The phone's copy of the same two triggers. Only one of the pair is
             ever in the document, so assistive technology sees one Back and
@@ -261,14 +337,44 @@ export function EventReviewPage() {
               Back
             </Button>
           </Steps.PrevTrigger>
-          <Steps.NextTrigger asChild>
-            <Button colorPalette="utahRed" size="sm">
-              Next
-            </Button>
-          </Steps.NextTrigger>
+          <NextButton disabled={onLastStep} onClick={() => goTo(step + 1)} />
         </HStack>
       </Steps.Root>
     </Stack>
+  )
+}
+
+/**
+ * Next, disabled on the last step - the same treatment Ark gives Back on the
+ * first, so the pair behaves symmetrically.
+ *
+ * Disabled rather than relabelled "Back to all events": a label change would
+ * resize the button and shift the step rail beside it, and the way out
+ * already exists - the link in the bar, and the one Summary offers after
+ * an accept or cancel.
+ *
+ * A plain button rather than Steps.NextTrigger, whose own `disabled` would
+ * be merged over this one.
+ */
+function NextButton({
+  disabled,
+  onClick,
+  wideOnly = false,
+}: {
+  disabled: boolean
+  onClick: () => void
+  wideOnly?: boolean
+}) {
+  return (
+    <Button
+      colorPalette="utahRed"
+      size="sm"
+      disabled={disabled}
+      onClick={onClick}
+      display={wideOnly ? { base: 'none', md: 'inline-flex' } : undefined}
+    >
+      Next
+    </Button>
   )
 }
 

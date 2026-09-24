@@ -4,27 +4,36 @@ import { useAuth } from '../../auth/useAuth'
 import { parseWaveforms, type RawWaveforms, type WaveformChannel } from './waveforms'
 
 /**
- * Channels already fetched this session, keyed by event id.
+ * Channels already fetched this session, keyed by event AND preferred origin.
  *
  * Module-level, like the event detail cache, so stepping back to the list and
  * into the same event again does not re-download two megabytes of samples.
+ *
+ * The origin is in the key because the route answers for the preferred
+ * origin's picks. An analyst who repicks in the processing tool makes a new
+ * preferred origin, often with picks on other stations; keyed by event alone,
+ * the old channels stayed cached and the new picks had no traces under them.
  */
-const cache = new Map<number, WaveformChannel[]>()
+const cache = new Map<string, WaveformChannel[]>()
+
+function keyOf(eventId: number | undefined, originId: number | undefined): string | undefined {
+  return eventId === undefined ? undefined : `${eventId}:${originId ?? 'none'}`
+}
 
 interface WaveformState {
-  /** Which event this state describes, so a stale one is recognisable. */
-  id: number | undefined
+  /** Which event and origin this state describes, so a stale one is recognisable. */
+  key: string | undefined
   channels: WaveformChannel[]
   loading: boolean
   error: string | null
 }
 
 /** The state an event starts in: whatever the cache already holds, or empty. */
-function forEvent(eventId: number | undefined): WaveformState {
+function forKey(key: string | undefined): WaveformState {
   return {
-    id: eventId,
-    channels: eventId === undefined ? [] : (cache.get(eventId) ?? []),
-    loading: eventId !== undefined && !cache.has(eventId),
+    key,
+    channels: key === undefined ? [] : (cache.get(key) ?? []),
+    loading: key !== undefined && !cache.has(key),
     error: null,
   }
 }
@@ -42,17 +51,18 @@ function forEvent(eventId: number | undefined): WaveformState {
  * time window do not change when somebody reviews the event, and re-fetching
  * megabytes to confirm that would be a poor trade on a phone.
  */
-export function useWaveforms(eventId: number | undefined) {
+export function useWaveforms(eventId: number | undefined, originId?: number) {
   const { getToken, expireSession } = useAuth()
-  const [state, setState] = useState<WaveformState>(() => forEvent(eventId))
+  const key = keyOf(eventId, originId)
+  const [state, setState] = useState<WaveformState>(() => forKey(key))
   const inFlight = useRef<AbortController | null>(null)
 
   const load = useCallback(
-    async (id: number) => {
+    async (id: number, key: string) => {
       inFlight.current?.abort()
       const controller = new AbortController()
       inFlight.current = controller
-      setState({ id, channels: cache.get(id) ?? [], loading: true, error: null })
+      setState({ key, channels: cache.get(key) ?? [], loading: true, error: null })
       try {
         const raw = await apiGet<RawWaveforms>(
           `/events/${id}/waveforms?filter=false&enableDeltaEncoding=true`,
@@ -61,8 +71,8 @@ export function useWaveforms(eventId: number | undefined) {
         )
         if (controller.signal.aborted) return
         const channels = parseWaveforms(raw)
-        cache.set(id, channels)
-        setState({ id, channels, loading: false, error: null })
+        cache.set(key, channels)
+        setState({ key, channels, loading: false, error: null })
       } catch (cause) {
         if (controller.signal.aborted) return
         if (cause instanceof DOMException && cause.name === 'AbortError') return
@@ -71,7 +81,7 @@ export function useWaveforms(eventId: number | undefined) {
           return
         }
         setState({
-          id,
+          key,
           channels: [],
           loading: false,
           error: cause instanceof Error ? cause.message : 'Could not load the waveforms',
@@ -89,19 +99,22 @@ export function useWaveforms(eventId: number | undefined) {
     screen means one frame of the previous event's traces. Deriving it here
     means the right thing is on screen the first time.
   */
-  const current = state.id === eventId ? state : forEvent(eventId)
+  const current = state.key === key ? state : forKey(key)
 
   useEffect(() => {
-    if (eventId === undefined || cache.has(eventId)) return
+    if (eventId === undefined || key === undefined || cache.has(key)) return
     // Deferred a tick, as useEventDetail does: `load` marks itself loading
     // synchronously, and doing that inside the effect body is a cascading
     // render React (and the lint rule) rightly objects to.
-    const start = window.setTimeout(() => void load(eventId), 0)
+    const start = window.setTimeout(() => void load(eventId, key), 0)
     return () => {
       window.clearTimeout(start)
       inFlight.current?.abort()
     }
-  }, [eventId, load])
+  }, [eventId, key, load])
 
-  return { ...current, reload: () => (eventId === undefined ? undefined : load(eventId)) }
+  return {
+    ...current,
+    reload: () => (eventId === undefined || key === undefined ? undefined : load(eventId, key)),
+  }
 }

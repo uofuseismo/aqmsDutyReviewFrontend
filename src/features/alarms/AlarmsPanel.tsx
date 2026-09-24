@@ -12,6 +12,7 @@ import {
   Text,
 } from '@chakra-ui/react'
 import {
+  LuBan,
   LuCheck,
   LuChevronDown,
   LuCircleHelp,
@@ -111,6 +112,13 @@ export function AlarmsPanel({
                 {summary.failed > 0 && (
                   <Badge size="sm" variant="subtle" colorPalette="red">
                     {summary.failed} failed
+                  </Badge>
+                )}
+                {/* Neutral, not red: after a cancel this is every row, and
+                    it is the decision working rather than anything wrong. */}
+                {summary.cancelled > 0 && (
+                  <Badge size="sm" variant="subtle" colorPalette="gray">
+                    {summary.cancelled === summary.total ? 'all' : summary.cancelled} cancelled
                   </Badge>
                 )}
               </HStack>
@@ -238,6 +246,8 @@ function AlarmTable({ rows, wide }: { rows: Alarm[]; wide: boolean }) {
 const GLYPHS = {
   check: { icon: <LuCheck />, color: undefined as string | undefined },
   clock: { icon: <LuClock />, color: 'warningText' },
+  // Muted like a completed row: withdrawn on purpose, nothing to act on.
+  cancelled: { icon: <LuBan />, color: undefined as string | undefined },
   cross: { icon: <LuX />, color: 'attentionText' },
   unknown: { icon: <LuCircleHelp />, color: 'attentionText' },
 } as const
