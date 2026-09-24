@@ -25,7 +25,7 @@ import { allSatisfied, locationCriteria, magnitudeCriteria } from './autoAccept'
 import {
   confirmationFor,
   expectedSolutionOf,
-  isSolutionChanged,
+  isStaleView,
   submitEventAction,
   type Confirmation,
   type EventAction,
@@ -189,12 +189,13 @@ export function SummaryStep({
         cause instanceof ApiError ? cause.message : `Could not ${action} this event.`,
       )
       /*
-        The event moved on - repicked in the processing tool, most likely.
-        Nothing was done; the backend's message says so. Load what is there
-        now, so the checks on this screen describe the solution the next
+        The event moved on (409) - repicked in the processing tool, most
+        likely - or AQMS would not act on it (422), usually because it
+        already has. Nothing was done; the backend's message says which.
+        Load what is there now, so this screen describes the event the next
         click would act on instead of the one that was just refused.
       */
-      if (isSolutionChanged(cause)) {
+      if (isStaleView(cause)) {
         onDone?.()
         onRefresh?.()
       }

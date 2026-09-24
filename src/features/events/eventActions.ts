@@ -50,11 +50,18 @@ export function expectedSolutionOf(detail: EventDetail | null): ExpectedSolution
 }
 
 /**
- * The backend refused because the event moved on since it was loaded.
- * Its message says so; the caller should also reload what it is showing.
+ * The refusals that say this screen's picture of the event is out of date,
+ * so it is worth re-reading before the next attempt.
+ *
+ * 409: the solution moved since it was loaded - see ExpectedSolution. 422: the event is there
+ * but AQMS would not act - most often because it already has, as with a
+ * cancel of an event somebody else already cancelled. Re-reading brings the
+ * review status up to date, so the next try meets the "already cancelled"
+ * confirmation instead of the same refusal. 404 is not here: an event that
+ * does not exist has nothing to re-read.
  */
-export function isSolutionChanged(cause: unknown): boolean {
-  return cause instanceof ApiError && cause.status === 409
+export function isStaleView(cause: unknown): boolean {
+  return cause instanceof ApiError && (cause.status === 409 || cause.status === 422)
 }
 
 export async function submitEventAction(
