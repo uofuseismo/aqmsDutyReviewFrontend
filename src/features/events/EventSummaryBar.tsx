@@ -107,7 +107,13 @@ export function EventSummaryBar({
       px={{ base: '3', md: '4' }}
       py="3"
       position="sticky"
-      top="0"
+      /*
+        Under the app header on a wide screen, where both stay pinned; at the
+        very top on a phone, where the app header scrolls away instead. See
+        AppShell. Same z-index as the header, which is fine now that the two
+        never share a spot.
+      */
+      top={{ base: '0', md: 'var(--app-header-height, 0px)' }}
       zIndex="docked"
     >
       <Stack gap="3">

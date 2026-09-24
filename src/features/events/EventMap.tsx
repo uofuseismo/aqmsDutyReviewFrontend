@@ -3,8 +3,18 @@ import 'leaflet/dist/leaflet.css'
 // travels with the thing it overrides.
 import './mapAttribution.css'
 import { Box, Text } from '@chakra-ui/react'
-import { useEffect, useMemo, type ReactNode } from 'react'
-import { MapContainer, Marker, Polygon, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  LayersControl,
+  MapContainer,
+  Marker,
+  Polygon,
+  Polyline,
+  TileLayer,
+  Tooltip,
+  useMap,
+  useMapEvents,
+} from 'react-leaflet'
 import type { LatLngBoundsExpression } from 'leaflet'
 import { useColorMode } from '../../components/ui/useColorMode'
 import { originIcon, outlineFor, quarryIcon, stationIcon, type StationShape } from './markerIcons'
@@ -13,20 +23,49 @@ import type { Origin } from './eventDetail'
 import { DRAWN_REGIONS } from './regions'
 
 /**
- * Stadia's raster tiles, in the reader's theme.
+ * Stadia's raster tiles: the street map in the reader's theme, or imagery.
  *
  * Attribution is a licence condition, not decoration - Stadia, OpenMapTiles
- * and OpenStreetMap all require it.
+ * and OpenStreetMap all require it, and the imagery adds its own providers,
+ * which Stadia asks to be named first.
  */
-const ATTRIBUTION =
+const STREET_ATTRIBUTION =
   '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> ' +
   '&copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> ' +
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+const SATELLITE_ATTRIBUTION =
+  '&copy; CNES, Distribution Airbus DS, &copy; Airbus DS, &copy; PlanetObserver ' +
+  '(Contains Copernicus Data) | ' +
+  STREET_ATTRIBUTION
 
-function tileUrl(dark: boolean, key: string | undefined): string {
-  const style = dark ? 'alidade_smooth_dark' : 'alidade_smooth'
+export type Basemap = 'map' | 'satellite'
+
+/** The names in the layers control, and how baselayerchange reports them. */
+const MAP_LABEL = 'Map'
+const SATELLITE_LABEL = 'Satellite'
+
+function tileUrl(basemap: Basemap, dark: boolean, key: string | undefined): string {
   const suffix = key ? `?api_key=${encodeURIComponent(key)}` : ''
+  if (basemap === 'satellite') {
+    // JPEG, unlike the street styles: imagery does not compress as PNG.
+    return `https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.jpg${suffix}`
+  }
+  const style = dark ? 'alidade_smooth_dark' : 'alidade_smooth'
   return `https://tiles.stadiamaps.com/tiles/${style}/{z}/{x}/{y}{r}.png${suffix}`
+}
+
+/**
+ * Tells the map which base layer the reader picked in the layers control.
+ *
+ * Leaflet owns the choice - the control adds and removes the tile layers
+ * itself - so this only listens, for the one thing React needs to know: which
+ * ink the markers should be drawn in.
+ */
+function BasemapWatcher({ onChange }: { onChange: (basemap: Basemap) => void }) {
+  useMapEvents({
+    baselayerchange: (event) => onChange(event.name === SATELLITE_LABEL ? 'satellite' : 'map'),
+  })
+  return null
 }
 
 /**
@@ -153,6 +192,12 @@ export interface EventMapProps {
   height?: string
   /** Reporting regions are drawn unless this is false. */
   showRegions?: boolean
+  /**
+   * Offer satellite imagery. The location map does: imagery answers "is
+   * that a pit?" beside a quarry marker in a way no street map can. The
+   * magnitude map is about amplitudes at stations, and gains nothing.
+   */
+  allowSatellite?: boolean
 }
 
 /**
@@ -173,11 +218,24 @@ export function EventMap({
   stadiaMapKey,
   height = '20rem',
   showRegions = true,
+  allowSatellite = false,
 }: EventMapProps) {
   const { colorMode } = useColorMode()
+  /*
+    Always opens on the street map, and forgets the choice with the map.
+
+    Imagery is for scrutinising one event - is that a pit beside the quarry
+    marker? - not a way to work. Remembering it would leave the next event,
+    and the one after, on imagery nobody asked for.
+  */
+  const [basemap, setBasemap] = useState<Basemap>('map')
   // Markers and region boundaries share one ink, so the map reads as one
   // drawing rather than two overlays that happen to sit on the same tiles.
-  const outline = outlineFor(colorMode)
+  //
+  // Imagery takes the DARK ink whatever the theme: it is mostly dark greens
+  // and browns, and the light theme's near-black outline all but vanishes on
+  // it, which is the same failure the dark street map had.
+  const outline = outlineFor(basemap === 'satellite' ? 'dark' : colorMode)
 
   const bounds = useMemo<LatLngBoundsExpression | null>(() => {
     const points: [number, number][] = [
@@ -213,7 +271,38 @@ export function EventMap({
           scrollWheelZoom
           style={{ height: '100%', width: '100%' }}
         >
-          <TileLayer attribution={ATTRIBUTION} url={tileUrl(colorMode === 'dark', stadiaMapKey)} />
+          {/*
+            The basemap choice: Leaflet's own layers control, stacked under the
+            zoom buttons - the stacked-layers icon opens a list with a radio
+            mark on the current one. A pair of Map | Satellite buttons was
+            tried first and read ambiguously: with two options side by side,
+            which one is "on" is a guess.
+
+            Each layer carries its own attribution, and Leaflet swaps it as
+            the layers are swapped.
+          */}
+          {allowSatellite ? (
+            <LayersControl position="topleft">
+              <LayersControl.BaseLayer name={MAP_LABEL} checked>
+                <TileLayer
+                  attribution={STREET_ATTRIBUTION}
+                  url={tileUrl('map', colorMode === 'dark', stadiaMapKey)}
+                />
+              </LayersControl.BaseLayer>
+              <LayersControl.BaseLayer name={SATELLITE_LABEL}>
+                <TileLayer
+                  attribution={SATELLITE_ATTRIBUTION}
+                  url={tileUrl('satellite', false, stadiaMapKey)}
+                />
+              </LayersControl.BaseLayer>
+            </LayersControl>
+          ) : (
+            <TileLayer
+              attribution={STREET_ATTRIBUTION}
+              url={tileUrl('map', colorMode === 'dark', stadiaMapKey)}
+            />
+          )}
+          {allowSatellite && <BasemapWatcher onChange={setBasemap} />}
           <FitBounds bounds={bounds} />
           <ResizeWatcher />
 

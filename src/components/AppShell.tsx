@@ -1,6 +1,6 @@
 import { Alert, Box, Container, Flex, Heading, Stack } from '@chakra-ui/react'
-import type { ReactNode } from 'react'
-import { Link as RouterLink } from 'react-router'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { Link as RouterLink, useMatch } from 'react-router'
 import { useAuth } from '../auth/useAuth'
 import { ColorModeButton } from './ui/color-mode'
 import { UserMenu } from './UserMenu'
@@ -10,13 +10,50 @@ export function AppShell({ children }: { children: ReactNode }) {
   // the shell - and the whole page under it - is left alone once a second.
   const { permission } = useAuth()
 
+  /*
+    Two pinned bars, and one screen.
+
+    An event page has its own sticky summary bar. Both used to pin at top 0
+    at the same z-index, so scrolling slid the summary bar over this header
+    and left it half covered - on every browser, noticed first in Firefox.
+
+    On a wide screen they stack: this header stays pinned exactly as it is on
+    the list, and the summary bar docks under it (see --app-header-height).
+    On a phone there is no room for both - the summary bar alone is a
+    quarter of the screen - so on an event page this header scrolls away
+    and the summary bar takes the top. The list keeps it pinned everywhere.
+  */
+  const onEvent = useMatch('/events/:eventId') !== null
+  const header = useRef<HTMLDivElement>(null)
+
+  /*
+    Published as a CSS variable rather than hard-coded: the height is
+    whatever the header renders at, and on a phone with a notch the safe-area
+    padding adds to it. Measured, it cannot drift.
+  */
+  useEffect(() => {
+    const element = header.current
+    if (!element) return
+    const root = document.documentElement
+    const publish = () =>
+      root.style.setProperty('--app-header-height', `${element.getBoundingClientRect().height}px`)
+    publish()
+    const observer = new ResizeObserver(publish)
+    observer.observe(element)
+    return () => {
+      observer.disconnect()
+      root.style.removeProperty('--app-header-height')
+    }
+  }, [])
+
   return (
     <Flex direction="column" minH="100dvh">
       <Box
         as="header"
+        ref={header}
         borderBottomWidth="1px"
         bg="bg.panel"
-        position="sticky"
+        position={onEvent ? { base: 'static', md: 'sticky' } : 'sticky'}
         top="0"
         zIndex="docked"
         css={{ paddingTop: 'env(safe-area-inset-top)' }}

@@ -241,6 +241,7 @@ export function LocationStep({
                   unplacedCount={mapStations.unplacedCount}
                   stadiaMapKey={settings?.stadiaMapKey}
                   height={isSplit ? '100%' : '20rem'}
+                  allowSatellite
                 />
               </Suspense>
             )}
