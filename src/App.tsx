@@ -8,6 +8,7 @@ import { LocksProvider } from './features/events/LocksProvider'
 import { EventListPage } from './features/events/EventListPage'
 import { EventReviewPage } from './features/events/EventReviewPage'
 import { NotFoundPage } from './components/NotFoundPage'
+import { ContactsPage } from './features/contacts/ContactsPage'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
 /**
@@ -61,6 +62,14 @@ export default function App() {
                 }
               />
               <Route path="/events/:eventId" element={<ReviewRoute />} />
+              <Route
+                path="/contacts"
+                element={
+                  <ErrorBoundary label="The contact list">
+                    <ContactsPage />
+                  </ErrorBoundary>
+                }
+              />
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </AppShell>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { useAuth } from '../../auth/useAuth'
-import { fetchAppSettings, type AppSettings } from '../settings/appSettings'
+import { cachedAppSettings, loadAppSettings, type AppSettings } from '../settings/appSettings'
 import {
   fetchStations,
   indexStationEpochs,
@@ -13,6 +13,8 @@ import {
 /**
  * Station metadata and app settings, fetched once per session.
  *
+ * The settings cache itself lives in appSettings, shared with the header.
+ *
  * Both are effectively static - a station's coordinates and the map key do
  * not change while somebody is looking at an event - so they are cached at
  * module level and shared by every consumer rather than re-fetched per page.
@@ -20,7 +22,6 @@ import {
 let stationCache: Map<string, Station> | null = null
 /** Every epoch, for placing an observation at the time it happened. */
 let epochCache: Map<string, Station[]> | null = null
-let settingsCache: AppSettings | null = null
 
 export function useStationsAndSettings() {
   const { getToken, expireSession } = useAuth()
@@ -30,13 +31,13 @@ export function useStationsAndSettings() {
   const [epochs, setEpochs] = useState<Map<string, Station[]>>(
     () => epochCache ?? new Map(),
   )
-  const [settings, setSettings] = useState<AppSettings | null>(() => settingsCache)
+  const [settings, setSettings] = useState<AppSettings | null>(cachedAppSettings)
   const [loading, setLoading] = useState(stationCache === null)
   const [error, setError] = useState<string | null>(null)
   const inFlight = useRef<AbortController | null>(null)
 
   const load = useCallback(async () => {
-    if (stationCache !== null && settingsCache !== null) return
+    if (stationCache !== null && cachedAppSettings() !== null) return
     inFlight.current?.abort()
     const controller = new AbortController()
     inFlight.current = controller
@@ -45,9 +46,8 @@ export function useStationsAndSettings() {
         stationCache === null
           ? fetchStations(getToken(), controller.signal)
           : Promise.resolve(null),
-        settingsCache === null
-          ? fetchAppSettings(getToken(), controller.signal)
-          : Promise.resolve(null),
+        // Shared with the header's own read - see appSettings.
+        cachedAppSettings() === null ? loadAppSettings(getToken()) : Promise.resolve(null),
       ])
       if (controller.signal.aborted) return
       if (rows !== null) {
@@ -57,10 +57,7 @@ export function useStationsAndSettings() {
         setStations(stationCache)
         setEpochs(epochCache)
       }
-      if (appSettings !== null) {
-        settingsCache = appSettings
-        setSettings(appSettings)
-      }
+      if (appSettings !== null) setSettings(appSettings)
       setLoading(false)
     } catch (cause) {
       if (controller.signal.aborted) return
