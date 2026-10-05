@@ -23,32 +23,36 @@ import type { Origin } from './eventDetail'
 import { DRAWN_REGIONS } from './regions'
 
 /**
- * Stadia's raster tiles: the street map in the reader's theme, or imagery.
+ * Stadia's raster tiles: the street map in the reader's theme, or terrain.
  *
  * Attribution is a licence condition, not decoration - Stadia, OpenMapTiles
- * and OpenStreetMap all require it, and the imagery adds its own providers,
- * which Stadia asks to be named first.
+ * and OpenStreetMap all require it, and terrain adds Stamen Design.
+ *
+ * Terrain rather than Alidade Satellite: imagery would be the better tool for
+ * "is that a pit?", but it is not in the current Stadia plan. Stamen Terrain
+ * is, and its relief shading still picks out cuts and benches.
  */
 const STREET_ATTRIBUTION =
   '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> ' +
   '&copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> ' +
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-const SATELLITE_ATTRIBUTION =
-  '&copy; CNES, Distribution Airbus DS, &copy; Airbus DS, &copy; PlanetObserver ' +
-  '(Contains Copernicus Data) | ' +
-  STREET_ATTRIBUTION
+const TERRAIN_ATTRIBUTION =
+  '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> ' +
+  '&copy; <a href="https://stamen.com/">Stamen Design</a> ' +
+  '&copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> ' +
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 
-export type Basemap = 'map' | 'satellite'
+export type Basemap = 'map' | 'terrain'
 
 /** The names in the layers control, and how baselayerchange reports them. */
 const MAP_LABEL = 'Map'
-const SATELLITE_LABEL = 'Satellite'
+const TERRAIN_LABEL = 'Terrain'
 
 function tileUrl(basemap: Basemap, dark: boolean, key: string | undefined): string {
   const suffix = key ? `?api_key=${encodeURIComponent(key)}` : ''
-  if (basemap === 'satellite') {
-    // JPEG, unlike the street styles: imagery does not compress as PNG.
-    return `https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.jpg${suffix}`
+  if (basemap === 'terrain') {
+    // One style for both themes: Stamen Terrain has no dark variant.
+    return `https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}{r}.png${suffix}`
   }
   const style = dark ? 'alidade_smooth_dark' : 'alidade_smooth'
   return `https://tiles.stadiamaps.com/tiles/${style}/{z}/{x}/{y}{r}.png${suffix}`
@@ -63,7 +67,7 @@ function tileUrl(basemap: Basemap, dark: boolean, key: string | undefined): stri
  */
 function BasemapWatcher({ onChange }: { onChange: (basemap: Basemap) => void }) {
   useMapEvents({
-    baselayerchange: (event) => onChange(event.name === SATELLITE_LABEL ? 'satellite' : 'map'),
+    baselayerchange: (event) => onChange(event.name === TERRAIN_LABEL ? 'terrain' : 'map'),
   })
   return null
 }
@@ -193,11 +197,12 @@ export interface EventMapProps {
   /** Reporting regions are drawn unless this is false. */
   showRegions?: boolean
   /**
-   * Offer satellite imagery. The location map does: imagery answers "is
-   * that a pit?" beside a quarry marker in a way no street map can. The
-   * magnitude map is about amplitudes at stations, and gains nothing.
+   * Offer a terrain basemap. The location map does: relief shading helps
+   * answer "is that a pit?" beside a quarry marker in a way the flat street
+   * map cannot. The magnitude map is about amplitudes at stations, and gains
+   * nothing.
    */
-  allowSatellite?: boolean
+  allowTerrain?: boolean
 }
 
 /**
@@ -218,24 +223,24 @@ export function EventMap({
   stadiaMapKey,
   height = '20rem',
   showRegions = true,
-  allowSatellite = false,
+  allowTerrain = false,
 }: EventMapProps) {
   const { colorMode } = useColorMode()
   /*
     Always opens on the street map, and forgets the choice with the map.
 
-    Imagery is for scrutinising one event - is that a pit beside the quarry
+    Terrain is for scrutinising one event - is that a pit beside the quarry
     marker? - not a way to work. Remembering it would leave the next event,
-    and the one after, on imagery nobody asked for.
+    and the one after, on a basemap nobody asked for.
   */
   const [basemap, setBasemap] = useState<Basemap>('map')
   // Markers and region boundaries share one ink, so the map reads as one
   // drawing rather than two overlays that happen to sit on the same tiles.
   //
-  // Imagery takes the DARK ink whatever the theme: it is mostly dark greens
-  // and browns, and the light theme's near-black outline all but vanishes on
-  // it, which is the same failure the dark street map had.
-  const outline = outlineFor(basemap === 'satellite' ? 'dark' : colorMode)
+  // Terrain takes the LIGHT ink whatever the theme: it has no dark variant,
+  // so in the dark theme the white outline meant for the dark street map
+  // would sit on pale relief and all but vanish.
+  const outline = outlineFor(basemap === 'terrain' ? 'light' : colorMode)
 
   const bounds = useMemo<LatLngBoundsExpression | null>(() => {
     const points: [number, number][] = [
@@ -274,14 +279,14 @@ export function EventMap({
           {/*
             The basemap choice: Leaflet's own layers control, stacked under the
             zoom buttons - the stacked-layers icon opens a list with a radio
-            mark on the current one. A pair of Map | Satellite buttons was
+            mark on the current one. A pair of side-by-side buttons was
             tried first and read ambiguously: with two options side by side,
             which one is "on" is a guess.
 
             Each layer carries its own attribution, and Leaflet swaps it as
             the layers are swapped.
           */}
-          {allowSatellite ? (
+          {allowTerrain ? (
             <LayersControl position="topleft">
               <LayersControl.BaseLayer name={MAP_LABEL} checked>
                 <TileLayer
@@ -289,10 +294,10 @@ export function EventMap({
                   url={tileUrl('map', colorMode === 'dark', stadiaMapKey)}
                 />
               </LayersControl.BaseLayer>
-              <LayersControl.BaseLayer name={SATELLITE_LABEL}>
+              <LayersControl.BaseLayer name={TERRAIN_LABEL}>
                 <TileLayer
-                  attribution={SATELLITE_ATTRIBUTION}
-                  url={tileUrl('satellite', false, stadiaMapKey)}
+                  attribution={TERRAIN_ATTRIBUTION}
+                  url={tileUrl('terrain', false, stadiaMapKey)}
                 />
               </LayersControl.BaseLayer>
             </LayersControl>
@@ -302,7 +307,7 @@ export function EventMap({
               url={tileUrl('map', colorMode === 'dark', stadiaMapKey)}
             />
           )}
-          {allowSatellite && <BasemapWatcher onChange={setBasemap} />}
+          {allowTerrain && <BasemapWatcher onChange={setBasemap} />}
           <FitBounds bounds={bounds} />
           <ResizeWatcher />
 
