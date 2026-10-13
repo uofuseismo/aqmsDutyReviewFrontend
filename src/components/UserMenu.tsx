@@ -1,5 +1,5 @@
 import { Avatar, Box, IconButton, Menu, Portal, Stack, Text } from '@chakra-ui/react'
-import { Suspense, lazy, useState } from 'react'
+import { Suspense, lazy, useId, useState } from 'react'
 import { LuLogOut, LuSettings, LuUsers } from 'react-icons/lu'
 import { formatCountdownCoarse } from '../auth/formatCountdown'
 import { PermissionBadge } from './PermissionBadge'
@@ -7,6 +7,7 @@ import { useAuth } from '../auth/useAuth'
 import { useSessionClock } from '../auth/useSessionClock'
 import { useIsWideScreen } from '../hooks/useMediaQuery'
 import { SettingsDialog } from '../features/settings/SettingsDialog'
+import { Tooltip } from './ui/Tooltip'
 
 /**
  * Loaded on demand, and only ever on a wide screen.
@@ -58,10 +59,18 @@ export function UserMenu() {
 
   // Administrator AND on a screen big enough for a table of accounts.
   const canManageUsers = can('admin') && isWide
+  // Shared by the menu and the tooltip on the same button - see Menu.Root.
+  const trigger = useId()
 
   return (
     <>
+      {/*
+        The menu and the tooltip each wire their own trigger; on one button
+        they must agree which element that is, or the tooltip never opens or
+        stays up over the menu.
+      */}
       <Menu.Root
+        ids={{ trigger }}
         positioning={{ placement: 'bottom-end' }}
         onSelect={(details) => {
           if (details.value === 'sign-out') signOut()
@@ -72,18 +81,21 @@ export function UserMenu() {
           }
         }}
       >
-        <Menu.Trigger asChild>
-          <IconButton
-            variant="ghost"
-            rounded="full"
-            size="sm"
-            aria-label={`Account menu for ${user ?? 'the current user'}`}
-          >
-            <Avatar.Root size="xs" colorPalette="utahRed">
-              <Avatar.Fallback name={user ?? undefined} />
-            </Avatar.Root>
-          </IconButton>
-        </Menu.Trigger>
+        {/* An initial in a circle says whose it is, not what it does. */}
+        <Tooltip ids={{ trigger }} content="Account · settings, sign out">
+          <Menu.Trigger asChild>
+            <IconButton
+              variant="ghost"
+              rounded="full"
+              size="sm"
+              aria-label={`Account menu for ${user ?? 'the current user'}`}
+            >
+              <Avatar.Root size="xs" colorPalette="utahRed">
+                <Avatar.Fallback name={user ?? undefined} />
+              </Avatar.Root>
+            </IconButton>
+          </Menu.Trigger>
+        </Tooltip>
         <Portal>
           <Menu.Positioner>
             <Menu.Content minW="14rem">

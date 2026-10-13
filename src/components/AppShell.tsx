@@ -3,7 +3,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { Link as RouterLink, useMatch } from 'react-router'
 import { useAuth } from '../auth/useAuth'
 import { ColorModeButton } from './ui/color-mode'
-import { ResourcesMenu } from './ResourcesMenu'
+import { HelpLinks } from './HelpLinks'
 import { UserMenu } from './UserMenu'
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -71,7 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               {/* Doubles as the way home from anywhere in the app. */}
               <RouterLink to="/">Duty Review</RouterLink>
             </Heading>
-            <ResourcesMenu />
+            <HelpLinks />
             <ColorModeButton />
             <UserMenu />
           </Flex>
