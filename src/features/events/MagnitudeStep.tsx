@@ -1,6 +1,7 @@
 import {
   Alert,
   Badge,
+  Button,
   Box,
   Grid,
   HStack,
@@ -216,8 +217,16 @@ export function MagnitudeStep({
           if (next) setSelectedId(Number(next))
         }}
       >
+        {/*
+          The count, in the label. Analysts reported "no duration magnitude"
+          on events that had one: the trigger shows one complete-looking line
+          - value, type, badges, station count - and nothing about it said
+          there were others behind it. "1 of 3" says so before anyone has to
+          spot the chevron.
+        */}
         <Select.Label fontSize="xs" color="fg.muted" textTransform="uppercase" letterSpacing="wide">
           Magnitude
+          {ordered.length > 1 && ` · ${ordered.indexOf(selected) + 1} of ${ordered.length}`}
         </Select.Label>
         <Select.Control>
           <Select.Trigger aria-label="Magnitude to review" height="auto" py="1.5">
@@ -225,8 +234,13 @@ export function MagnitudeStep({
               <MagnitudeOption magnitude={selected} />
             </Select.ValueText>
           </Select.Trigger>
+          {/* Full-strength and heavier than Chakra's muted default: the
+              chevron is the one mark that says "this opens". */}
           <Select.IndicatorGroup>
-            <Select.Indicator />
+            <Select.Indicator
+              color="fg"
+              css={{ '& svg': { strokeWidth: 3, width: '1.25rem', height: '1.25rem' } }}
+            />
           </Select.IndicatorGroup>
         </Select.Control>
         <Select.Positioner>
@@ -241,6 +255,46 @@ export function MagnitudeStep({
             ))}
           </Select.Content>
         </Select.Positioner>
+        {/*
+          The others, named. The strongest of the three signals: it prints
+          "Md" on the screen, which is precisely what reviewers said was not
+          there. Each switches to that magnitude - a shortcut beside the
+          dropdown, not a replacement for it, and one wrapping line however
+          many there are.
+        */}
+        {ordered.length > 1 && (
+          <HStack gap="1.5" wrap="wrap" fontSize="sm" mt="1.5">
+            <Text color="fg.muted">Also:</Text>
+            {ordered
+              .filter((magnitude) => magnitude.id !== selected.id)
+              .map((magnitude, index) => (
+                <HStack key={magnitude.id} gap="1.5">
+                  {index > 0 && (
+                    <Text color="fg.muted" aria-hidden>
+                      ·
+                    </Text>
+                  )}
+                  <Button
+                    variant="plain"
+                    size="sm"
+                    height="auto"
+                    minW="0"
+                    px="0"
+                    textDecoration="underline"
+                    textUnderlineOffset="3px"
+                    fontVariantNumeric="tabular-nums"
+                    aria-label={`Show the ${magnitudeLabel(magnitude.type)} magnitude, ${
+                      magnitude.value === undefined ? 'no value' : magnitude.value.toFixed(2)
+                    }`}
+                    onClick={() => setSelectedId(magnitude.id)}
+                  >
+                    {magnitude.value === undefined ? '—' : magnitude.value.toFixed(2)}{' '}
+                    {magnitudeLabel(magnitude.type)}
+                  </Button>
+                </HStack>
+              ))}
+          </HStack>
+        )}
       </Select.Root>
 
       {/*
