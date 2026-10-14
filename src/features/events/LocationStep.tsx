@@ -1,5 +1,5 @@
 import { Alert, Box, Grid, HStack, Skeleton, Spinner, Stack, Tabs, Text } from '@chakra-ui/react'
-import { Suspense, lazy } from 'react'
+import { Suspense, lazy, useState } from 'react'
 import { useStationsAndSettings } from '../stations/useStations'
 import { useQuarries } from '../gazetteer/useQuarries'
 import { quarriesWithin } from '../gazetteer/quarries'
@@ -72,6 +72,10 @@ export function LocationStep({
 }) {
   const { stations, epochs, settings, error: stationsError } = useStationsAndSettings()
   const { quarries, error: quarriesError } = useQuarries()
+  // Which tab is showing, and the spot beside the tabs where the waveform
+  // zoom controls render. Up here, before the early returns, as hooks must be.
+  const [tab, setTab] = useState<string>('waveforms')
+  const [controlsSlot, setControlsSlot] = useState<HTMLElement | null>(null)
 
   // Matches the `xl` templateColumns breakpoint below; the components need to
   // know in JS, not only in CSS.
@@ -111,6 +115,8 @@ export function LocationStep({
     a solution it does not share.
   */
   const hasWaveforms = selected.id === detail.preferredOrigin?.id
+  // Falls back to the map whenever there are no waveforms to show.
+  const activeTab = hasWaveforms ? tab : 'map'
 
   /*
     Quarries close enough to matter.
@@ -200,8 +206,12 @@ export function LocationStep({
           actually answer "is this pick on the right phase", and the map and
           residuals are the supporting evidence. On a non-preferred origin
           there are no waveforms, so the map takes the default instead.
+
+          Controlled, because the zoom controls beside the tabs belong to the
+          Waveforms tab alone and have to know which one is showing.
         */
-        defaultValue={hasWaveforms ? 'waveforms' : 'map'}
+        value={activeTab}
+        onValueChange={(details) => setTab(details.value)}
         variant="enclosed"
         size="sm"
         display="flex"
@@ -209,16 +219,24 @@ export function LocationStep({
         minH="0"
         height={{ base: 'auto', md: `clamp(18rem, calc(100dvh - ${PANEL_CHROME}), 45rem)` }}
       >
-        <Tabs.List>
-          {hasWaveforms && (
-            <Tabs.Trigger value="waveforms">
-              <LuActivity /> Waveforms
+        {/*
+          The zoom controls share the row with the tabs but sit OUTSIDE the
+          tablist: a tablist may only contain tabs, and anything else in it is
+          an accessibility error.
+        */}
+        <HStack gap="2" wrap="wrap" justify="space-between">
+          <Tabs.List>
+            {hasWaveforms && (
+              <Tabs.Trigger value="waveforms">
+                <LuActivity /> Waveforms
+              </Tabs.Trigger>
+            )}
+            <Tabs.Trigger value="map">
+              <LuMap /> Map &amp; arrivals
             </Tabs.Trigger>
-          )}
-          <Tabs.Trigger value="map">
-            <LuMap /> Map &amp; arrivals
-          </Tabs.Trigger>
-        </Tabs.List>
+          </Tabs.List>
+          {activeTab === 'waveforms' && <Box ref={setControlsSlot} ms="auto" />}
+        </HStack>
 
         <Tabs.Content value="map" flex="1" minH="0" pt="3" display="flex" flexDirection="column">
           <Grid
@@ -295,6 +313,7 @@ export function LocationStep({
               originId={selected.id}
               arrivals={selected.arrivals}
               originMs={selected.time.getTime()}
+              controlsSlot={activeTab === 'waveforms' ? controlsSlot : null}
             />
           </Tabs.Content>
         )}

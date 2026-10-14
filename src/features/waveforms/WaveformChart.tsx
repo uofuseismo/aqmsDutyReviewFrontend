@@ -44,6 +44,12 @@ export interface WaveformChartProps {
   originMs?: number
   /** Called with a reset function once the chart exists. */
   onReady?: (reset: () => void) => void
+  /**
+   * Told whether the view is zoomed or panned, whenever that may have
+   * changed. Should be stable (a state setter is ideal): it is a dependency
+   * of the chart's construction.
+   */
+  onZoomedChange?: (zoomed: boolean) => void
 }
 
 /**
@@ -54,7 +60,7 @@ export interface WaveformChartProps {
  * instance is easier to reason about than a component that rebuilds options
  * on every render.
  */
-export function WaveformChart({ traces, originMs, onReady }: WaveformChartProps) {
+export function WaveformChart({ traces, originMs, onReady, onZoomedChange }: WaveformChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const { colorMode } = useColorMode()
   const mode: 'light' | 'dark' = colorMode === 'dark' ? 'dark' : 'light'
@@ -217,6 +223,7 @@ export function WaveformChart({ traces, originMs, onReady }: WaveformChartProps)
               }
               return true
             },
+            onPanComplete: ({ chart }) => onZoomedChange?.(chart.isZoomedOrPanned()),
           },
           zoom: {
             /*
@@ -235,6 +242,9 @@ export function WaveformChart({ traces, originMs, onReady }: WaveformChartProps)
             pinch: { enabled: true },
             drag: { enabled: true, backgroundColor: 'rgba(120,120,120,0.15)' },
             mode: 'x',
+            // Whether there is anything to reset - which is what decides if
+            // a Reset button is worth showing at all.
+            onZoomComplete: ({ chart }) => onZoomedChange?.(chart.isZoomedOrPanned()),
           },
         },
       },
@@ -294,9 +304,14 @@ export function WaveformChart({ traces, originMs, onReady }: WaveformChartProps)
       inline style itself when the manager starts.
     */
     canvas.style.setProperty('touch-action', 'pan-y', 'important')
-    onReady?.(() => chart.resetZoom())
+    // A new chart starts at full extent, whatever the last one was showing.
+    onZoomedChange?.(false)
+    onReady?.(() => {
+      chart.resetZoom()
+      onZoomedChange?.(false)
+    })
     return () => chart.destroy()
-  }, [traces, originMs, mode, onReady])
+  }, [traces, originMs, mode, onReady, onZoomedChange])
 
   return <canvas ref={canvasRef} aria-label="Waveform record section" role="img" />
 }
