@@ -1,5 +1,7 @@
 import {
   Badge,
+  Link,
+  Icon,
   Box,
   HStack,
   Heading,
@@ -19,7 +21,7 @@ import {
   reviewStatusPalette,
   humanize,
 } from './format'
-import { LuArrowLeft } from 'react-icons/lu'
+import { LuArrowLeft, LuExternalLink } from 'react-icons/lu'
 import { Link as RouterLink } from 'react-router'
 import { Tooltip } from '../../components/ui/Tooltip'
 import { summariseRegions } from './regions'
@@ -54,6 +56,7 @@ export function EventSummaryBar({
   preferredOriginId,
   onSelectOrigin,
   notice,
+  comcatUrl,
 }: {
   event: CatalogEvent
   /** Every origin on the event, so one can be chosen from here. */
@@ -84,6 +87,11 @@ export function EventSummaryBar({
    * pressing Accept, for whom it was easy to miss.
    */
   notice?: ReactNode
+  /**
+   * The event's USGS ComCat page, when it has one. The identifier becomes a
+   * link to it; without one it stays plain text.
+   */
+  comcatUrl?: string
 }) {
   const latitude = origin?.latitude ?? event.latitude
   const longitude = origin?.longitude ?? event.longitude
@@ -154,7 +162,35 @@ export function EventSummaryBar({
             {/* The event identifier IS the page's subject, so it is the h1 -
                 more use to heading navigation than the app's own name. */}
             <Heading as="h1" size="lg" fontWeight="bold" fontVariantNumeric="tabular-nums">
-              {event.id}
+              {/*
+                A link once the event is public: the USGS page is where the
+                rest of the world is looking at it, and the identifier is
+                the obvious handle. Same ink and weight as the plain heading,
+                underlined, with the new-tab mark - it should read as this
+                event's id first and a link second.
+              */}
+              {comcatUrl ? (
+                <Tooltip content="Open on the USGS event page (new tab)">
+                  <Link
+                    href={comcatUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    color="fg"
+                    fontWeight="bold"
+                    textDecoration="underline"
+                    textUnderlineOffset="4px"
+                    _hover={{ textDecorationThickness: '2px' }}
+                    aria-label={`Event ${event.id} on the USGS event page, opens in a new tab`}
+                  >
+                    {event.id}
+                    <Icon size="sm" color="fg.muted" ms="1" aria-hidden>
+                      <LuExternalLink />
+                    </Icon>
+                  </Link>
+                </Tooltip>
+              ) : (
+                event.id
+              )}
             </Heading>
             <Text fontSize="sm" color="fg.muted">
               {/* Joined rather than concatenated: an absent geographic type

@@ -164,3 +164,30 @@ export function alarmSources(alarms: Alarm[]): string[] {
   }
   return [...first.entries()].sort((a, b) => a[1] - b[1]).map(([source]) => source)
 }
+
+/**
+ * The alarm that submits an event to PDL, and so to the USGS ComCat page.
+ *
+ * Spelled as the alarm data spells it - EVTPRM2PDL - and matched without
+ * regard to case.
+ */
+const COMCAT_ACTION = 'evtprm2pdl'
+
+/**
+ * Whether this event has gone out to ComCat, so its USGS page exists.
+ *
+ * Only a COMPLETED submission counts. ERROR means the hand-off to PDL failed,
+ * and PROCESSING means it has not happened yet - in both cases the page may
+ * not exist, and a link to a 404 is worse than no link. Any CANCELLED
+ * submission vetoes it: a cancelled event's alarms go CANCELLED, and the
+ * page for an event that has been withdrawn is not one to send anyone to.
+ */
+export function publishedToComcat(alarms: Alarm[]): boolean {
+  const submissions = alarms.filter(
+    (alarm) => alarm.action.trim().toLowerCase() === COMCAT_ACTION,
+  )
+  return (
+    submissions.some((alarm) => alarm.outcome === 'completed') &&
+    !submissions.some((alarm) => alarm.outcome === 'cancelled')
+  )
+}

@@ -12,6 +12,11 @@ export interface AppSettings {
   primaryDatabase?: string
   /** Where the duty documentation lives. Always http(s), from the backend's config. */
   documentationURL?: string
+  /**
+   * The USGS ComCat event page an event identifier is appended to, with no
+   * separator: "https://earthquake.usgs.gov/earthquakes/eventpage/uu" + evid.
+   */
+  comcatPrefix?: string
 }
 
 export function fetchAppSettings(token: string | null, signal?: AbortSignal) {

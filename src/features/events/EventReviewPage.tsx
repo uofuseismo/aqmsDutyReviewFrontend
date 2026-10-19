@@ -10,6 +10,8 @@ import { useLocks } from './useLocks'
 import { useCatalog } from './useCatalog'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { SummaryStep } from './SummaryStep'
+import { useAlarms } from '../alarms/useAlarms'
+import { publishedToComcat } from '../alarms/alarms'
 import { SolutionChangedNotice } from './SolutionChangedNotice'
 import { printOf, samePrint, type SolutionPrint } from './solutionPrint'
 import { useStationsAndSettings } from '../stations/useStations'
@@ -42,7 +44,7 @@ export function EventReviewPage() {
     revalidate: revalidateDetail,
     settled: detailSettled,
   } = useEventDetail(Number.isFinite(Number(eventId)) ? Number(eventId) : undefined)
-  const { epochs } = useStationsAndSettings()
+  const { epochs, settings } = useStationsAndSettings()
 
   /*
     WHICH ORIGIN the whole review is about, chosen once and obeyed by every
@@ -99,6 +101,34 @@ export function EventReviewPage() {
     processing tool: focus never fires, but within one poll the repick shows
     up here.
   */
+  /*
+    This event's alarms, read once here and shared: the Summary shows them,
+    and the summary bar needs them to know whether the event is on ComCat.
+  */
+  const alarmsState = useAlarms(event?.id)
+
+  /*
+    The event's USGS page, once there is one.
+
+    Only when the ComCat submission alarm completed and nothing says the
+    event was withdrawn - see publishedToComcat. The prefix comes from the
+    backend's settings and the identifier is appended as is, no separator.
+  */
+  const comcatPrefix = settings?.comcatPrefix
+  const status = (detail?.preferredOrigin?.reviewStatus ?? event?.reviewStatus ?? '').toLowerCase()
+  /*
+    Cancelled here, this visit. The alarms only turn CANCELLED a few seconds
+    later, on the Summary's delayed re-read, and until then the bar would go
+    on offering a USGS link for an event the reviewer had just withdrawn.
+  */
+  const [cancelledHere, setCancelledHere] = useState<number | null>(null)
+  const eventCancelled =
+    status === 'cancelled' || status === 'canceled' || (event !== undefined && cancelledHere === event.id)
+  const comcatUrl =
+    event !== undefined && comcatPrefix && !eventCancelled && publishedToComcat(alarmsState.alarms)
+      ? `${comcatPrefix}${event.id}`
+      : undefined
+
   const lastRow = useRef(event)
   useEffect(() => {
     const previous = lastRow.current
@@ -202,6 +232,7 @@ export function EventReviewPage() {
         origins={detail?.origins ?? []}
         preferredOriginId={detail?.preferredOrigin?.id}
         onSelectOrigin={(next) => setChosen({ eventId, originId: next })}
+        comcatUrl={comcatUrl}
         notice={
           visibleChange && (
             <SolutionChangedNotice
@@ -321,8 +352,12 @@ export function EventReviewPage() {
                 detail={detail}
                 origin={origin}
                 onDone={reload}
+                onActed={(action) => {
+                  if (action === 'cancel') setCancelledHere(event.id)
+                }}
                 onRefresh={reloadDetail}
                 changeUnreviewed={visibleChange !== null}
+                alarmsState={alarmsState}
               />
             </ErrorBoundary>
           </Box>

@@ -18,7 +18,7 @@ import { useAuth } from '../../auth/useAuth'
 import { Tooltip } from '../../components/ui/Tooltip'
 import { humanize, reviewStatusPalette } from './format'
 import { AlarmsPanel } from '../alarms/AlarmsPanel'
-import { POST_ACTION_REFRESH_MS, useAlarms } from '../alarms/useAlarms'
+import { POST_ACTION_REFRESH_MS, type AlarmsState } from '../alarms/useAlarms'
 import { hasNotified } from '../alarms/alarms'
 import { CriteriaTable } from './CriteriaTable'
 import { allSatisfied, locationCriteria, magnitudeCriteria } from './autoAccept'
@@ -54,8 +54,10 @@ export function SummaryStep({
   detail,
   origin: chosenOrigin,
   onDone,
+  onActed,
   onRefresh,
   changeUnreviewed = false,
+  alarmsState,
 }: {
   event: CatalogEvent
   detail: EventDetail | null
@@ -63,10 +65,17 @@ export function SummaryStep({
   origin?: Origin
   /** Called after a successful action, to refresh the catalog behind us. */
   onDone?: () => void
+  /** Told which action succeeded - only on success, unlike onDone. */
+  onActed?: (action: EventAction) => void
   /** Called after a successful action, to re-read this event's own state. */
   onRefresh?: () => void
   /** The event changed under this review and nobody has acknowledged it. */
   changeUnreviewed?: boolean
+  /**
+   * This event's alarms. Read by the review page, not here: the summary bar
+   * needs them too (for the ComCat link), and one fetch should serve both.
+   */
+  alarmsState: AlarmsState
 }) {
   const { can, getToken, expireSession } = useAuth()
   const [pending, setPending] = useState<EventAction | null>(null)
@@ -126,7 +135,7 @@ export function SummaryStep({
     error: alarmsError,
     gaveUp: alarmsStuck,
     refreshAfter: refreshAlarms,
-  } = useAlarms(event.id)
+  } = alarmsState
 
   const origin = chosenOrigin ?? detail?.preferredOrigin
   const isPreferred = origin !== undefined && origin.id === detail?.preferredOrigin?.id
@@ -168,6 +177,7 @@ export function SummaryStep({
         this succeeds, and so is this event's own status.
       */
       setDone({ action, message })
+      onActed?.(action)
       onDone?.()
       onRefresh?.()
       /*

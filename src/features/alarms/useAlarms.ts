@@ -164,3 +164,6 @@ export function useAlarms(eventId: number | undefined) {
     refreshAfter,
   }
 }
+
+/** What useAlarms hands back - passed down whole by the review page. */
+export type AlarmsState = ReturnType<typeof useAlarms>
