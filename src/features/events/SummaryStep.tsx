@@ -10,14 +10,26 @@ import {
   Stack,
   Text,
 } from '@chakra-ui/react'
-import { useRef, useState } from 'react'
-import { LuArrowLeft, LuCheck, LuCircleCheck, LuX } from 'react-icons/lu'
+import { Suspense, lazy, useRef, useState } from 'react'
+import { LuArrowLeft, LuCheck, LuCircleCheck, LuNewspaper, LuX } from 'react-icons/lu'
 import { Link as RouterLink } from 'react-router'
 import { ApiError } from '../../api/client'
 import { useAuth } from '../../auth/useAuth'
 import { Tooltip } from '../../components/ui/Tooltip'
 import { humanize, reviewStatusPalette } from './format'
 import { AlarmsPanel } from '../alarms/AlarmsPanel'
+import type { ReleaseSubject } from '../pressRelease/PressReleaseDialog'
+
+/*
+  Loaded on demand. A press release is drafted a handful of times a year, so
+  the dialog, the 280 places and the ComCat client stay out of the bundle
+  every reviewer downloads until somebody presses the button.
+*/
+const PressReleaseDialog = lazy(() =>
+  import('../pressRelease/PressReleaseDialog').then((module) => ({
+    default: module.PressReleaseDialog,
+  })),
+)
 import { POST_ACTION_REFRESH_MS, type AlarmsState } from '../alarms/useAlarms'
 import { hasNotified } from '../alarms/alarms'
 import { CriteriaTable } from './CriteriaTable'
@@ -148,6 +160,28 @@ export function SummaryStep({
         ]
   const wouldAutoAccept = groups.length > 0 && groups.every((g) => allSatisfied(g.criteria))
   const alreadyOut = hasNotified(alarms)
+
+  /*
+    The press release is about the event as published: its PREFERRED origin
+    and magnitude, never whichever origin the picker is showing.
+  */
+  const [releaseOpen, setReleaseOpen] = useState(false)
+  const [releaseEverOpened, setReleaseEverOpened] = useState(false)
+  const releaseOrigin = detail?.preferredOrigin
+  const releaseMagnitude =
+    detail?.origins
+      .flatMap((candidate) => candidate.magnitudes)
+      .find((magnitude) => magnitude.id === detail.preferredMagnitudeId)?.value ?? event.magnitude
+  const releaseSubject: ReleaseSubject | undefined =
+    releaseOrigin !== undefined && releaseMagnitude !== undefined && releaseMagnitude > -9
+      ? {
+          eventId: event.id,
+          originTime: releaseOrigin.time,
+          latitude: releaseOrigin.latitude,
+          longitude: releaseOrigin.longitude,
+          magnitude: releaseMagnitude,
+        }
+      : undefined
 
   const run = async (action: EventAction) => {
     inFlight.current?.abort()
@@ -393,6 +427,47 @@ export function SummaryStep({
         </Alert.Root>
       )}
 
+
+      {/*
+        Last, and quiet. A press release is a handful-of-times-a-year job,
+        so it sits below everything that decides the event and never
+        competes with Accept and Cancel. Open to read-only reviewers too: it
+        writes text for the group chat and changes nothing.
+      */}
+      <HStack
+        gap="3"
+        wrap="wrap"
+        justify="space-between"
+        borderTopWidth="1px"
+        pt="4"
+      >
+        <Text fontSize="sm" color="fg.muted">
+          {releaseSubject === undefined
+            ? 'A press release needs a preferred origin and magnitude.'
+            : 'For a felt event: draft the press release to copy into the group chat.'}
+        </Text>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={releaseSubject === undefined}
+          onClick={() => {
+            setReleaseEverOpened(true)
+            setReleaseOpen(true)
+          }}
+        >
+          <LuNewspaper /> Draft press release
+        </Button>
+      </HStack>
+      {/* Mounted from the first open, so the download happens on that click. */}
+      {releaseSubject !== undefined && releaseEverOpened && (
+        <Suspense fallback={null}>
+          <PressReleaseDialog
+            open={releaseOpen}
+            onClose={() => setReleaseOpen(false)}
+            subject={releaseSubject}
+          />
+        </Suspense>
+      )}
 
       {/*
         Friction, and only where it is earned: an action that repeats what the
