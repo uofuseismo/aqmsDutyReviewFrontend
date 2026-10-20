@@ -17,9 +17,23 @@ const { Geodesic } = geographiclib
 /** UUSS is in Salt Lake City; every time in a release is local time there. */
 export const RELEASE_TIME_ZONE = 'America/Denver'
 
-/** Where the survey lives. The real ComCat, not a staging prefix: the public goes here. */
-export function dyfiUrl(eventId: number): string {
-  return `https://earthquake.usgs.gov/earthquakes/eventpage/uu${eventId}/tellus`
+/**
+ * Production ComCat's event pages - the backend's own default for
+ * comcatPrefix, used here only if the setting never arrives.
+ */
+export const DEFAULT_COMCAT_PREFIX = 'https://earthquake.usgs.gov/earthquakes/eventpage/uu'
+
+/**
+ * Where the survey lives: the event's page on whichever ComCat this system
+ * publishes to, plus /tellus.
+ *
+ * From comcatPrefix, not hard-coded. A test system's event ids are not the
+ * ids production publishes - the sample release's 31159041 is uu80160861 on
+ * ComCat - so a hard-coded production link from a test draft 404s, or lands
+ * on an unrelated event. The prefix follows the system the draft came from.
+ */
+export function dyfiUrl(eventId: number, comcatPrefix?: string): string {
+  return `${comcatPrefix || DEFAULT_COMCAT_PREFIX}${eventId}/tellus`
 }
 
 /** The history the release quotes: how many, since when, how far, how big. */
@@ -162,13 +176,16 @@ export interface ReleaseInput {
   latitude: number
   longitude: number
   magnitude: number
+  /** From app settings; the survey link is built on it. */
+  comcatPrefix?: string
   /** Null drops the history sentence, as firstInfo.py does when ComCat fails. */
   history: History | null
   releasedAt: Date
 }
 
 export function buildPressRelease(input: ReleaseInput): string {
-  const { eventId, originTime, latitude, longitude, magnitude, history, releasedAt } = input
+  const { eventId, originTime, latitude, longitude, magnitude, comcatPrefix, history, releasedAt } =
+    input
   const place = nearestPlace(latitude, longitude)
   const { minMagnitude, radiusMi } = HISTORY_SEARCH
 
@@ -197,6 +214,6 @@ export function buildPressRelease(input: ReleaseInput): string {
   }
   text +=
     '\n\nAnyone who felt the earthquake is encouraged to fill out a survey form on the US ' +
-    `Geological Survey website: ${dyfiUrl(eventId)}`
+    `Geological Survey website: ${dyfiUrl(eventId, comcatPrefix)}`
   return text
 }

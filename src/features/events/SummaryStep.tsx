@@ -16,6 +16,7 @@ import { Link as RouterLink } from 'react-router'
 import { ApiError } from '../../api/client'
 import { useAuth } from '../../auth/useAuth'
 import { Tooltip } from '../../components/ui/Tooltip'
+import { useAppSettings } from '../settings/useAppSettings'
 import { humanize, reviewStatusPalette } from './format'
 import { AlarmsPanel } from '../alarms/AlarmsPanel'
 import type { ReleaseSubject } from '../pressRelease/PressReleaseDialog'
@@ -165,6 +166,8 @@ export function SummaryStep({
     The press release is about the event as published: its PREFERRED origin
     and magnitude, never whichever origin the picker is showing.
   */
+  // For the survey link's prefix. Shared, already-fetched settings.
+  const settings = useAppSettings()
   const [releaseOpen, setReleaseOpen] = useState(false)
   const [releaseEverOpened, setReleaseEverOpened] = useState(false)
   const releaseOrigin = detail?.preferredOrigin
@@ -180,6 +183,7 @@ export function SummaryStep({
           latitude: releaseOrigin.latitude,
           longitude: releaseOrigin.longitude,
           magnitude: releaseMagnitude,
+          comcatPrefix: settings?.comcatPrefix,
         }
       : undefined
 
@@ -444,19 +448,33 @@ export function SummaryStep({
         <Text fontSize="sm" color="fg.muted">
           {releaseSubject === undefined
             ? 'A press release needs a preferred origin and magnitude.'
-            : 'For a felt event: draft the press release to copy into the group chat.'}
+            : 'For a significant event: draft the press release then copy into the group chat.'}
         </Text>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={releaseSubject === undefined}
-          onClick={() => {
-            setReleaseEverOpened(true)
-            setReleaseOpen(true)
-          }}
+        {/*
+          aria-disabled rather than disabled, as Accept and Cancel do: a
+          disabled button takes no pointer events, so its tooltip would never
+          open - and "why can't I" is when one is most wanted.
+        */}
+        <Tooltip
+          content={
+            releaseSubject === undefined
+              ? 'Needs a preferred origin and magnitude'
+              : 'Writes the release from the preferred solution and nearby ComCat history - nothing is sent'
+          }
         >
-          <LuNewspaper /> Draft press release
-        </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            aria-disabled={releaseSubject === undefined}
+            onClick={() => {
+              if (releaseSubject === undefined) return
+              setReleaseEverOpened(true)
+              setReleaseOpen(true)
+            }}
+          >
+            <LuNewspaper /> Draft press release
+          </Button>
+        </Tooltip>
       </HStack>
       {/* Mounted from the first open, so the download happens on that click. */}
       {releaseSubject !== undefined && releaseEverOpened && (

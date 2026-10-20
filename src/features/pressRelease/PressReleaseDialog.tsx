@@ -22,6 +22,8 @@ export interface ReleaseSubject {
   latitude: number
   longitude: number
   magnitude: number
+  /** The ComCat this system publishes to - see dyfiUrl. */
+  comcatPrefix?: string
 }
 
 type Search =
